@@ -1,80 +1,74 @@
-# PiicoDev SSD1306 demo code
-# Show off some features of the PiicoDev OLED driver
-
+import _thread
+from machine import ADC, Pin
+import utime
 import math
 from PiicoDev_SSD1306 import *
 from PiicoDev_Unified import sleep_ms
 
+pins = [
+    Pin(15,Pin.OUT),
+    Pin(14,Pin.OUT),
+    Pin(16,Pin.OUT),
+    Pin(17,Pin.OUT),
+    ]
+
+full_step_sequence = [
+    [1,0,0,0],
+    [0,1,0,0],
+    [0,0,1,0],
+    [0,0,0,1]
+    ]
+full_step_sequence2 = [
+    [0,0,0,1],
+    [0,0,1,0],
+    [0,1,0,0],
+    [1,0,0,0]
+    ]
+
+spLock = _thread.allocate_lock()
 display = create_PiicoDev_SSD1306()
 
 # Text and numbers
+thick = 15
 for counter in range(0,101):
     display.fill(0)
-    display.text("PiicoDev",30,20, 1)
+    display.text("Loading",30,20, 1)
     display.text(str(counter),50,35, 1)
+    display.fill_rect(10, HEIGHT-thick, counter, thick, 1)
     display.show()
+   
 sleep_ms(500)
 
+display.fill(0)
 
-# Bargraphs
-thick = 15 # thickness of the bar
-for val in range(WIDTH+1):
+
+# use variables instead of numbers:
+soil = ADC(Pin(26)) # Soil moisture PIN reference
+
+#Calibraton values
+min_moisture=0
+max_moisture=65535
+
+readDelay = 00.1 # delay between readings
+
+def spinStepper():
+    for j in range(1, 100):
+        for step in full_step_sequence2:
+            for i in range(len(pins)):
+                pins[i].value(step[i])
+                utime.sleep(0.001)
+            
+def updateLcd():
     display.fill(0)
-    display.text("Bargraphs", 20, 10, 1)
-    display.fill_rect(0, HEIGHT-thick, val, thick, 1) # Filled bar graph
-    display.rect(0, int(HEIGHT-2*thick - 5), int(val/2), thick, 1) # no-fill
+    # read moisture value and convert to percentage into the calibration range
+    moisture = (max_moisture-soil.read_u16())*100/(max_moisture-min_moisture) 
+    # print values
+    print("moisture: " + "%.2f" % moisture +"% (adc: "+str(soil.read_u16())+")")
+    display.text("moisture:" + "%.2f" % moisture +"% (adc: "+str(soil.read_u16())+")", 0, 10, 1)
     display.show()
-sleep_ms(500)
-
-
-# Plots
-graphSin = display.graph2D()
-graphCos = display.graph2D()
-for x in range(128):
-    s = int(math.sin(x/10.0)*HEIGHT+HEIGHT+30)
-    c = int(math.cos(x/10.0)*HEIGHT+HEIGHT+30)
-    display.fill(0)
-    display.text("Plots", 50, 10, 1)
-    display.updateGraph2D(graphSin,s)
-    display.updateGraph2D(graphCos,c)
-    display.show()
-sleep_ms(1000)
-
-
-# Bouncy Square animation
-square = 15   # square edge length (px)
-x = (WIDTH-1)/2   # starting position
-y = (HEIGHT-1)/2  # starting y position
-
-v = {'x': 2.3, # Starting velocity (pixels per animation frame)
-     'y': 3.5}
-
-collisionCount = 0
+    utime.sleep(readDelay) # set a delay between readings
+   
+    
 while True:
-    display.fill(0) # empty the frame buffer
-    
-    # Next position = Current Position + Velocity
-    x = x + v['x']
-    y = y + v['y']
-    
-    # Check for boundary collision
-    if x > WIDTH-square or x < 0:
-        v['x']=-v['x'] # reverse the x-velocity
-        collisionCount = collisionCount + 1
-    if y >= HEIGHT-square or y < 0:
-        v['y']=-v['y'] # reverse the x-velocity
-        collisionCount = collisionCount + 1
-    
-    # draw the rectangle
-    display.fill_rect(round(x), round(y), square, square, 1)
-    
-    # draw boundaries
-    display.hline(0,0,WIDTH,1)
-    display.vline(0,0,HEIGHT,1)
-    display.vline(WIDTH-1,0,HEIGHT, 1)
-    display.hline(0,HEIGHT-1,WIDTH, 1)
-    
-    # show the collision count
-    display.text(str(collisionCount),10,round(HEIGHT/2), 1)
-    display.show()
-    sleep_ms(10)
+   updateLcd()
+   spinStepper()
